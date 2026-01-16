@@ -1,0 +1,5 @@
+{
+  "name": "VisualMotion Studio",
+  "description": "VisualMotion Studio A high-performance visual animation platform for SVGs and web UI. Design motion with a timeline-based editor and export production-ready code.",
+  "requestFramePermissions": []
+}
