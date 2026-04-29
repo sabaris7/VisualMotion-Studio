@@ -19,7 +19,35 @@ export const PROPERTY_LABELS: Record<AnimatableProperty, string> = {
   opacity: 'Opacity',
   strokeDashoffset: 'Stroke Draw',
   fill: 'Fill Color',
-  stroke: 'Stroke Color'
+  stroke: 'Stroke Color',
+  
+  // Gradient Props
+  stopColor0: 'Stop 1 Color',
+  stopColor1: 'Stop 2 Color',
+  stopColor2: 'Stop 3 Color',
+  stopColor3: 'Stop 4 Color',
+  stopColor4: 'Stop 5 Color',
+  stopOffset0: 'Stop 1 Offset',
+  stopOffset1: 'Stop 2 Offset',
+  stopOffset2: 'Stop 3 Offset',
+  stopOffset3: 'Stop 4 Offset',
+  stopOffset4: 'Stop 5 Offset',
+  gradientX1: 'Gradient Start X',
+  gradientY1: 'Gradient Start Y',
+  gradientX2: 'Gradient End X',
+  gradientY2: 'Gradient End Y',
+  gradientCX: 'Gradient Center X',
+  gradientCY: 'Gradient Center Y',
+  gradientR: 'Gradient Radius',
+
+  // Motion Path
+  offsetPath: 'Motion Path',
+  offsetDistance: 'Path Progress',
+  offsetRotate: 'Path Rotation',
+
+  // Anchor
+  anchorX: 'Anchor X',
+  anchorY: 'Anchor Y'
 };
 
 export const INITIAL_SVG = `

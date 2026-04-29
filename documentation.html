@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisualMotion Studio Documentation</title>
+    <style>
+        /* CSS Reset & Variables */
+        :root {
+            --bg-color: #ffffff;
+            --text-main: #333333;
+            --text-muted: #666666;
+            --primary-color: #3B82F6;
+            --primary-hover: #2563EB;
+            --border-color: #E5E7EB;
+            --bg-sidebar: #F9FAFB;
+            --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            color: var(--text-main);
+            background-color: var(--bg-color);
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* Typography */
+        h1, h2, h3, h4, h5, h6 {
+            font-weight: 600;
+            line-height: 1.2;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            color: #111827;
+        }
+
+        h1 { font-size: 2.5rem; }
+        h2 { font-size: 2rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; }
+        h3 { font-size: 1.5rem; }
+        p { margin-bottom: 1rem; }
+        ul, ol { margin-bottom: 1rem; padding-left: 2rem; }
+        li { margin-bottom: 0.5rem; }
+        a { color: var(--primary-color); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code { font-family: var(--font-mono); background-color: #F3F4F6; padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+        pre { background-color: #1F2937; color: #F9FAFB; padding: 1rem; border-radius: 8px; overflow-x: auto; margin-bottom: 1rem; }
+        pre code { background-color: transparent; color: inherit; padding: 0; }
+
+        /* Layout */
+        .header {
+            background-color: var(--bg-color);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .btn-download {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+
+        .btn-download:hover {
+            background-color: var(--primary-hover);
+            text-decoration: none;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            padding: 2rem 1rem;
+            display: none;
+            position: sticky;
+            top: 65px;
+            height: calc(100vh - 65px);
+            overflow-y: auto;
+        }
+
+        .sidebar nav ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar nav ul li {
+            margin-bottom: 0.5rem;
+        }
+
+        .sidebar nav ul li a {
+            color: var(--text-muted);
+            display: block;
+            padding: 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s, color 0.2s;
+        }
+
+        .sidebar nav ul li a:hover {
+            background-color: #E5E7EB;
+            color: var(--text-main);
+            text-decoration: none;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            max-width: 900px;
+        }
+
+        /* Components */
+        .screenshot-placeholder {
+            width: 100%;
+            height: 300px;
+            background-color: #E5E7EB;
+            border: 2px dashed #9CA3AF;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            margin: 1.5rem 0;
+            font-weight: 500;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border-left: 4px solid;
+        }
+
+        .alert-info { background-color: #EFF6FF; border-color: #3B82F6; color: #1E3A8A; }
+        .alert-warning { background-color: #FFFBEB; border-color: #F59E0B; color: #92400E; }
+
+        .kbd {
+            display: inline-block;
+            padding: 0.2rem 0.4rem;
+            font-size: 0.85em;
+            font-weight: 600;
+            line-height: 1;
+            color: #24292e;
+            background-color: #fafbfc;
+            border: 1px solid #d1d5da;
+            border-radius: 3px;
+            box-shadow: inset 0 -1px 0 #d1d5da;
+            font-family: var(--font-mono);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            text-align: left;
+        }
+
+        th {
+            background-color: #F9FAFB;
+            font-weight: 600;
+        }
+
+        /* Responsive */
+        @media (min-width: 768px) {
+            .sidebar {
+                display: block;
+            }
+            .main-content {
+                padding: 3rem 4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header class="header" role="banner">
+        <div class="header-title">VisualMotion Studio Docs</div>
+        <a href="installation.html" class="btn-download" aria-label="Download or Install VisualMotion Studio">Download / Install</a>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar" role="navigation" aria-label="Sidebar Navigation">
+            <nav>
+                <ul>
+                    <li><a href="#introduction">Introduction</a></li>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#usage">Usage Guide</a></li>
+                    <li><a href="#configuration">Configuration</a></li>
+                    <li><a href="#permissions">Permissions</a></li>
+                    <li><a href="#shortcuts">Keyboard Shortcuts</a></li>
+                    <li><a href="#examples">Examples</a></li>
+                    <li><a href="#troubleshooting">Troubleshooting</a></li>
+                    <li><a href="#faq">FAQ</a></li>
+                    <li><a href="#changelog">Changelog</a></li>
+                    <li><a href="#contact">Developer Contact</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main-content" role="main">
+            <section id="introduction">
+                <h1>VisualMotion Studio Documentation</h1>
+                <p>Welcome to the official documentation for <strong>VisualMotion Studio</strong>. This guide provides comprehensive information on how to use, configure, and troubleshoot the application.</p>
+                <div class="alert alert-info">
+                    <strong>Note:</strong> This documentation applies to version 1.0 and above.
+                </div>
+            </section>
+
+            <section id="features">
+                <h2>Features</h2>
+                <p>VisualMotion Studio is a powerful browser-based SVG animation tool designed for developers and designers. Key features include:</p>
+                <ul>
+                    <li><strong>Timeline-based Animation:</strong> Intuitive keyframe timeline for precise control over SVG properties.</li>
+                    <li><strong>Property Interpolation:</strong> Animate transforms (X, Y, Scale, Rotation), opacity, colors (fill, stroke), and motion paths.</li>
+                    <li><strong>Custom Easings:</strong> Support for linear, quadratic, cubic, bounce, and custom bezier curve easings.</li>
+                    <li><strong>Path Editing:</strong> Direct on-canvas editing of SVG paths with node manipulation and lasso selection.</li>
+                    <li><strong>Export Options:</strong> Export your animations as React components, Vanilla JS bundles, or standalone Animated SVGs.</li>
+                    <li><strong>Live Preview:</strong> Real-time rendering engine to preview animations exactly as they will appear in production.</li>
+                </ul>
+                <div class="screenshot-placeholder" aria-label="Screenshot of the main editor interface">
+                    [ Screenshot: Main Editor Interface ]
+                </div>
+            </section>
+
+            <section id="usage">
+                <h2>Usage Guide</h2>
+                
+                <h3>Importing SVG</h3>
+                <p>To start animating, paste your raw SVG code into the "Import SVG" modal or use the default placeholder. The studio will automatically parse the SVG and populate the layer tree.</p>
+
+                <h3>Selecting Layers</h3>
+                <p>Click on any element in the stage or select it from the left sidebar. You can select multiple layers by holding <span class="kbd">Shift</span> or <span class="kbd">Ctrl</span>/<span class="kbd">Cmd</span> while clicking.</p>
+
+                <h3>Adding Keyframes</h3>
+                <ol>
+                    <li>Select a layer.</li>
+                    <li>Move the playhead on the timeline to the desired time.</li>
+                    <li>In the Properties panel on the right, change a value (e.g., X Position).</li>
+                    <li>A keyframe will be automatically added at the current time.</li>
+                </ol>
+
+                <div class="screenshot-placeholder" aria-label="Screenshot of the timeline and keyframes">
+                    [ Screenshot: Timeline and Keyframes ]
+                </div>
+            </section>
+
+            <section id="configuration">
+                <h2>Configuration</h2>
+                <p>VisualMotion Studio runs entirely in the browser and requires minimal configuration. However, you can adjust project-level settings:</p>
+                <ul>
+                    <li><strong>Artboard Size:</strong> Set the width and height of the canvas.</li>
+                    <li><strong>Background Color:</strong> Define the artboard background.</li>
+                    <li><strong>Duration:</strong> Set the total duration of the animation loop.</li>
+                    <li><strong>Playback Options:</strong> Toggle looping or yoyo (ping-pong) playback.</li>
+                </ul>
+            </section>
+
+            <section id="permissions">
+                <h2>Permissions</h2>
+                <p>VisualMotion Studio operates client-side and requires the following browser permissions:</p>
+                <ul>
+                    <li><strong>Clipboard Access:</strong> Required to copy exported code (React/Vanilla JS) to your clipboard.</li>
+                    <li><strong>Local Storage (Optional):</strong> Used to save your current workspace state so you don't lose progress on refresh.</li>
+                </ul>
+            </section>
+
+            <section id="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Shortcut (Windows/Linux)</th>
+                            <th>Shortcut (Mac)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Play / Pause</td>
+                            <td><span class="kbd">Space</span></td>
+                            <td><span class="kbd">Space</span></td>
+                        </tr>
+                        <tr>
+                            <td>Delete Selected Layer/Keyframe</td>
+                            <td><span class="kbd">Delete</span> or <span class="kbd">Backspace</span></td>
+                            <td><span class="kbd">Delete</span> or <span class="kbd">Backspace</span></td>
+                        </tr>
+                        <tr>
+                            <td>Pan Canvas</td>
+                            <td>Hold <span class="kbd">Space</span> + Drag</td>
+                            <td>Hold <span class="kbd">Space</span> + Drag</td>
+                        </tr>
+                        <tr>
+                            <td>Precision Transform</td>
+                            <td>Hold <span class="kbd">Ctrl</span> while dragging</td>
+                            <td>Hold <span class="kbd">Cmd</span> while dragging</td>
+                        </tr>
+                        <tr>
+                            <td>Axis Lock Transform</td>
+                            <td>Hold <span class="kbd">Shift</span> while dragging</td>
+                            <td>Hold <span class="kbd">Shift</span> while dragging</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="examples">
+                <h2>Examples</h2>
+                <p>Here is an example of how the exported React component looks:</p>
+<pre><code>import React, { useEffect, useRef } from 'react';
+
+const AnimatedSVG = () => {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    // Animation runtime injected here
+    // ...
+  }, []);
+
+  return (
+    &lt;div ref={containerRef} dangerouslySetInnerHTML={{ __html: `&lt;svg&gt;...&lt;/svg&gt;` }} /&gt;
+  );
+};
+
+export default AnimatedSVG;
+</code></pre>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+                <h3>Animations not playing smoothly</h3>
+                <p>Ensure hardware acceleration is enabled in your browser. Complex SVGs with many gradients or filters may cause performance drops. Try simplifying the SVG paths.</p>
+                
+                <h3>Exported code not working</h3>
+                <p>If the Vanilla JS export isn't running, ensure the script is placed at the end of your <code>&lt;body&gt;</code> tag or wrapped in a <code>DOMContentLoaded</code> event listener.</p>
+            </section>
+
+            <section id="faq">
+                <h2>FAQ</h2>
+                <h4>Can I import complex SVGs from Illustrator or Figma?</h4>
+                <p>Yes, but it is recommended to optimize and minify your SVGs before importing. Remove unnecessary groups and metadata for the best experience.</p>
+                
+                <h4>Is my data sent to a server?</h4>
+                <p>No. VisualMotion Studio processes everything locally in your browser. Your SVG data never leaves your machine.</p>
+            </section>
+
+            <section id="changelog">
+                <h2>Changelog</h2>
+                <ul>
+                    <li><strong>v1.0.0</strong> - Initial Release. Support for basic transforms, colors, timeline, and React/Vanilla JS export.</li>
+                </ul>
+            </section>
+
+            <section id="contact">
+                <h2>Developer Contact</h2>
+                <p>If you encounter bugs, have feature requests, or need support, please reach out:</p>
+                <ul>
+                    <li><strong>Email:</strong> support@visualmotion.studio</li>
+                    <li><strong>GitHub:</strong> <a href="#">github.com/visualmotion/studio</a></li>
+                    <li><strong>Twitter:</strong> <a href="#">@VisualMotionApp</a></li>
+                </ul>
+            </section>
+        </main>
+    </div>
+
+</body>
+</html>

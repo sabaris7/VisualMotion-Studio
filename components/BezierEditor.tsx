@@ -94,14 +94,19 @@ const BezierEditor: React.FC<BezierEditorProps> = ({ params, onChange }) => {
     const handleIndex = d1 < 15 ? 0 : d2 < 15 ? 1 : -1;
     if (handleIndex === -1) return;
 
+    let rAF: number | null = null;
     const onMouseMove = (me: MouseEvent) => {
-      const mx = me.clientX - rect.left;
-      const my = me.clientY - rect.top;
-      const { x, y } = fromCanvas(mx, my);
-      const newParams = [...params] as [number, number, number, number];
-      if (handleIndex === 0) { newParams[0] = x; newParams[1] = y; }
-      else { newParams[2] = x; newParams[3] = y; }
-      onChange(newParams);
+      if (rAF) return;
+      rAF = requestAnimationFrame(() => {
+        const mx = me.clientX - rect.left;
+        const my = me.clientY - rect.top;
+        const { x, y } = fromCanvas(mx, my);
+        const newParams = [...params] as [number, number, number, number];
+        if (handleIndex === 0) { newParams[0] = x; newParams[1] = y; }
+        else { newParams[2] = x; newParams[3] = y; }
+        onChange(newParams);
+        rAF = null;
+      });
     };
 
     const onMouseUp = () => {

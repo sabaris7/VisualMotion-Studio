@@ -12,12 +12,56 @@ export function rgbToHex(r: number, g: number, b: number) {
   return "#" + ((1 << 24) + (Math.round(r) << 16) + (Math.round(g) << 8) + Math.round(b)).toString(16).slice(1);
 }
 
-export function interpolateColor(color1: string, color2: string, t: number) {
-  if (!color1.startsWith('#') || !color2.startsWith('#')) return color2;
-  const rgb1 = hexToRgb(color1);
-  const rgb2 = hexToRgb(color2);
-  const r = rgb1.r + (rgb2.r - rgb1.r) * t;
-  const g = rgb1.g + (rgb2.g - rgb1.g) * t;
-  const b = rgb1.b + (rgb2.b - rgb1.b) * t;
-  return rgbToHex(r, g, b);
+function parseColor(color: string): { r: number, g: number, b: number, a: number } | null {
+  const str = color.trim().toLowerCase();
+  
+  if (str.startsWith('#')) {
+    let hex = str.substring(1);
+    if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+    if (hex.length === 6) {
+        const num = parseInt(hex, 16);
+        return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255, a: 1 };
+    }
+    if (hex.length === 8) {
+        const num = parseInt(hex, 16);
+        return { r: (num >> 24) & 255, g: (num >> 16) & 255, b: (num >> 8) & 255, a: (num & 255) / 255 };
+    }
+  }
+  
+  if (str.startsWith('rgb')) {
+    const parts = str.match(/([\d.]+)/g);
+    if (parts && parts.length >= 3) {
+        return {
+            r: parseFloat(parts[0]),
+            g: parseFloat(parts[1]),
+            b: parseFloat(parts[2]),
+            a: parts[3] ? parseFloat(parts[3]) : 1
+        };
+    }
+  }
+  
+  return null;
+}
+
+export function toHex(color: string): string {
+  const c = parseColor(color);
+  if (!c) return '#000000';
+  return rgbToHex(c.r, c.g, c.b);
+}
+
+export function interpolateColor(color1: string, color2: string, t: number): string {
+  const start = parseColor(color1);
+  const end = parseColor(color2);
+  
+  if (!start || !end) return t < 0.5 ? color1 : color2;
+  
+  const r = Math.round(start.r + (end.r - start.r) * t);
+  const g = Math.round(start.g + (end.g - start.g) * t);
+  const b = Math.round(start.b + (end.b - start.b) * t);
+  const a = start.a + (end.a - start.a) * t;
+  
+  if (a >= 0.995) { 
+      return `rgb(${r}, ${g}, ${b})`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
 }

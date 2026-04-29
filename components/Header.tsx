@@ -49,7 +49,7 @@ const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <h1 className="text-sm font-bold tracking-tight text-gray-900 leading-none">VisualMotion <span className="text-orange-500">Studio</span></h1>
-            <p className="text-[10px] text-gray-400 font-medium uppercase tracking-widest mt-0.5">v1.0.4 Beta</p>
+            <p className="text-[9px] text-gray-400 font-bold uppercase tracking-[0.2em] mt-1">V1.0.4 BETA</p>
           </div>
         </div>
 

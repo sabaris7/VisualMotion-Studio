@@ -8,32 +8,39 @@ interface SidebarProps {
   hiddenIds: string[];
   onSelect: (id: string, multi: boolean) => void;
   onGroup: () => void;
-  onReorder: (sourceId: string, targetId: string) => void;
+  onReorder: (sourceId: string, targetId: string, position: 'before' | 'after') => void;
   onDelete: (id: string) => void;
   onDeleteSelected: () => void;
   onToggleVisibility: (id: string) => void;
   onRename: (id: string, newName: string) => void;
 }
 
+type DragOverState = {
+  id: string;
+  position: 'top' | 'bottom';
+};
+
 const LayerItem: React.FC<{ 
   layer: SVGLayer, 
   selectedIds: string[], 
   hiddenIds: string[],
   onSelect: (id: string, multi: boolean) => void, 
-  onReorder: (sourceId: string, targetId: string) => void,
+  onReorder: (sourceId: string, targetId: string, position: 'before' | 'after') => void,
   onDelete: (id: string) => void,
   onToggleVisibility: (id: string) => void,
   onRename: (id: string, newName: string) => void,
   depth: number,
-  dragOverId: string | null,
-  setDragOverId: (id: string | null) => void
-}> = ({ layer, selectedIds, hiddenIds, onSelect, onReorder, onDelete, onToggleVisibility, onRename, depth, dragOverId, setDragOverId }) => {
+  dragOverState: DragOverState | null,
+  setDragOverState: (state: DragOverState | null) => void
+}> = ({ layer, selectedIds, hiddenIds, onSelect, onReorder, onDelete, onToggleVisibility, onRename, depth, dragOverState, setDragOverState }) => {
   const isSelected = selectedIds.includes(layer.id);
   const isHidden = hiddenIds.includes(layer.id);
-  const isDraggedOver = dragOverId === layer.id;
+  const isDraggedOver = dragOverState?.id === layer.id;
+  const dropPosition = isDraggedOver ? dragOverState?.position : null;
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(layer.id);
   const inputRef = useRef<HTMLInputElement>(null);
+  const itemRef = useRef<HTMLDivElement>(null);
   
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData("text/plain", layer.id);
@@ -42,18 +49,36 @@ const LayerItem: React.FC<{
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
-    if (dragOverId !== layer.id) {
-      setDragOverId(layer.id);
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    // Determine if we are in the top half or bottom half
+    const isTopHalf = offsetY < rect.height / 2;
+    const position = isTopHalf ? 'top' : 'bottom';
+
+    if (dragOverState?.id !== layer.id || dragOverState?.position !== position) {
+      setDragOverState({ id: layer.id, position });
     }
+  };
+
+  const handleDragEnd = () => {
+    setDragOverState(null);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setDragOverId(null);
+    e.stopPropagation();
+    setDragOverState(null);
     const sourceId = e.dataTransfer.getData("text/plain");
+    
     if (sourceId && sourceId !== layer.id) {
-      onReorder(sourceId, layer.id);
+      const rect = e.currentTarget.getBoundingClientRect();
+      const offsetY = e.clientY - rect.top;
+      const isTopHalf = offsetY < rect.height / 2;
+      const position = isTopHalf ? 'before' : 'after';
+      onReorder(sourceId, layer.id, position);
     }
   };
 
@@ -64,6 +89,12 @@ const LayerItem: React.FC<{
     }
   }, [isEditing]);
 
+  useEffect(() => {
+    if (isSelected && itemRef.current) {
+      itemRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [isSelected]);
+
   const handleRename = () => {
     onRename(layer.id, editName);
     setIsEditing(false);
@@ -71,15 +102,19 @@ const LayerItem: React.FC<{
 
   return (
     <div
-      draggable
+      ref={itemRef}
+      draggable={!isEditing}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
       onDrop={handleDrop}
       className="group relative"
     >
       {/* Drop Indicator Line */}
       {isDraggedOver && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-orange-500 z-20" />
+        <div 
+          className={`absolute left-0 right-0 h-0.5 bg-orange-500 z-20 pointer-events-none ${dropPosition === 'top' ? 'top-0' : 'bottom-0'}`} 
+        />
       )}
       
       <div 
@@ -93,7 +128,7 @@ const LayerItem: React.FC<{
         } ${isHidden ? 'opacity-50 grayscale' : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
-        <div className="text-gray-300 group-hover:text-gray-400 cursor-grab active:cursor-grabbing p-1 shrink-0">
+        <div className="text-gray-300 group-hover:text-gray-400 cursor-grab active:cursor-grabbing p-1 shrink-0 pointer-events-none">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM8 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z" />
           </svg>
@@ -111,7 +146,7 @@ const LayerItem: React.FC<{
           )}
         </button>
 
-        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${isSelected ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-400'}`}>
+        <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 pointer-events-none ${isSelected ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-400'}`}>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             {layer.tagName === 'circle' && <circle cx="12" cy="12" r="10" />}
             {layer.tagName === 'rect' && <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />}
@@ -120,7 +155,7 @@ const LayerItem: React.FC<{
           </svg>
         </div>
         
-        <div className="flex flex-col truncate flex-1 min-w-0">
+        <div className="flex flex-col truncate flex-1 min-w-0 pointer-events-none">
           {isEditing ? (
             <input
               ref={inputRef}
@@ -128,7 +163,7 @@ const LayerItem: React.FC<{
               onChange={(e) => setEditName(e.target.value)}
               onBlur={handleRename}
               onKeyDown={(e) => e.key === 'Enter' && handleRename()}
-              className="text-[11px] font-bold leading-tight bg-white border border-orange-500 rounded outline-none px-1 w-full"
+              className="text-[11px] font-bold leading-tight bg-white border border-orange-500 rounded outline-none px-1 w-full pointer-events-auto"
             />
           ) : (
             <span className="text-[11px] font-bold leading-tight truncate">{layer.id}</span>
@@ -154,8 +189,8 @@ const LayerItem: React.FC<{
           onToggleVisibility={onToggleVisibility}
           onRename={onRename}
           depth={depth + 1}
-          dragOverId={dragOverId}
-          setDragOverId={setDragOverId}
+          dragOverState={dragOverState}
+          setDragOverState={setDragOverState}
         />
       ))}
     </div>
@@ -163,14 +198,14 @@ const LayerItem: React.FC<{
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ layers, selectedIds, hiddenIds, onSelect, onGroup, onReorder, onDelete, onDeleteSelected, onToggleVisibility, onRename }) => {
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dragOverState, setDragOverState] = useState<DragOverState | null>(null);
 
   const handleGlobalDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
   const handleGlobalDrop = () => {
-    setDragOverId(null);
+    setDragOverState(null);
   };
 
   return (
@@ -213,8 +248,8 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, selectedIds, hiddenIds, onSel
             onToggleVisibility={onToggleVisibility}
             onRename={onRename}
             depth={0} 
-            dragOverId={dragOverId}
-            setDragOverId={setDragOverId}
+            dragOverState={dragOverState}
+            setDragOverState={setDragOverState}
           />
         ))}
         {layers.length === 0 && (

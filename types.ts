@@ -1,5 +1,20 @@
 
-export type AnimatableProperty = 'x' | 'y' | 'z' | 'scale' | 'scaleX' | 'scaleY' | 'rotate' | 'rotateX' | 'rotateY' | 'opacity' | 'strokeDashoffset' | 'fill' | 'stroke';
+export type AnimatableProperty = 
+  | 'x' | 'y' | 'z' 
+  | 'scale' | 'scaleX' | 'scaleY' 
+  | 'rotate' | 'rotateX' | 'rotateY' 
+  | 'opacity' 
+  | 'strokeDashoffset' 
+  | 'fill' | 'stroke'
+  // Gradient Properties
+  | 'stopColor0' | 'stopColor1' | 'stopColor2' | 'stopColor3' | 'stopColor4'
+  | 'stopOffset0' | 'stopOffset1' | 'stopOffset2' | 'stopOffset3' | 'stopOffset4'
+  | 'gradientX1' | 'gradientY1' | 'gradientX2' | 'gradientY2'
+  | 'gradientCX' | 'gradientCY' | 'gradientR'
+  // Motion Path Properties
+  | 'offsetPath' | 'offsetDistance' | 'offsetRotate'
+  // Anchor Point
+  | 'anchorX' | 'anchorY';
 
 export type EasingType = 'linear' | 'easeInQuad' | 'easeOutQuad' | 'easeInOutQuad' | 'easeInCubic' | 'easeOutCubic' | 'easeInOutCubic' | 'bounce' | 'custom';
 
@@ -59,6 +74,8 @@ export interface EditorState {
   playbackSpeed: number;
   timelineZoom: number;
   stageZoom: number;
+  viewX: number;
+  viewY: number;
   markers: TimelineMarker[];
   isTransformMode: boolean;
   artboardWidth: number;

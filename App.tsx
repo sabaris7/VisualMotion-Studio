@@ -8,6 +8,7 @@ import Stage from './components/Stage';
 import ExportModal from './components/ExportModal';
 import { EditorState, SVGLayer, AnimatableProperty, EasingType, TriggerType, Keyframe, SelectedKeyframe } from './types';
 import { INITIAL_SVG, DEFAULT_DURATION, TICK_INTERVAL } from './constants';
+import { easings } from './utils/easings';
 
 const App: React.FC = () => {
   const [state, setState] = useState<EditorState>({
@@ -25,6 +26,8 @@ const App: React.FC = () => {
     playbackSpeed: 1,
     timelineZoom: 1,
     stageZoom: 1,
+    viewX: 0,
+    viewY: 0,
     markers: [],
     isTransformMode: true,
     artboardWidth: 400,
@@ -39,6 +42,10 @@ const App: React.FC = () => {
   const [future, setFuture] = useState<EditorState[]>([]);
   const [clipboard, setClipboard] = useState<{ property: AnimatableProperty, value: number | string, easing: EasingType, bezier?: [number, number, number, number], relativeTime: number }[]>([]);
   
+  // Refs for managing Spacebar interaction (Tap vs Hold)
+  const spaceDownRef = useRef<number | null>(null);
+  const isPanningRef = useRef(false);
+
   const pushToHistory = useCallback((currentState: EditorState) => {
     setHistory(prev => [...prev.slice(-49), currentState]);
     setFuture([]);
@@ -64,20 +71,195 @@ const App: React.FC = () => {
 
   const addKeyframe = useCallback((layerId: string, property: AnimatableProperty, value: number | string, time?: number, easing: EasingType = 'easeInOutQuad', skipHistory: boolean = false, bezier?: [number, number, number, number]) => {
     if (!skipHistory) pushToHistory(state);
+    
     setState(prev => {
-      const newAnimations = [...prev.animations];
-      let layerAnim = newAnimations.find(a => a.layerId === layerId);
-      if (!layerAnim) { layerAnim = { layerId, tracks: [], trigger: 'on_load' }; newAnimations.push(layerAnim); }
-      let track = layerAnim.tracks.find(t => t.property === property);
-      if (!track) { track = { property, keyframes: [] }; layerAnim.tracks.push(track); }
       const targetTime = time !== undefined ? time : prev.currentTime;
-      const existingIdx = track.keyframes.findIndex(kf => Math.abs(kf.time - targetTime) < 0.01);
-      const newKeyframe: Keyframe = { id: Math.random().toString(36).substr(2, 9), time: targetTime, value, easing, bezierParams: bezier };
-      if (existingIdx > -1) track.keyframes[existingIdx] = newKeyframe;
-      else { track.keyframes.push(newKeyframe); track.keyframes.sort((a, b) => a.time - b.time); }
+      
+      // Find if this property already has an animation track
+      const existingAnim = prev.animations.find(a => a.layerId === layerId);
+      const existingTrack = existingAnim?.tracks.find(t => t.property === property);
+      const hasKeyframes = existingTrack && existingTrack.keyframes.length > 0;
+
+      const newKeyframesToAdd: Keyframe[] = [];
+
+      // If this is the first keyframe and it's not at t=0, 
+      // we should insert a default keyframe at t=0 to prevent retroactive jumps
+      if (!hasKeyframes && targetTime > 0.001) {
+        // Determine default value
+        let defaultValue: number | string = 0;
+        if (['scale', 'scaleX', 'scaleY', 'opacity'].includes(property)) defaultValue = 1;
+        if (['anchorX', 'anchorY'].includes(property)) defaultValue = 0.5;
+        if (property === 'fill' || property === 'stroke') {
+           // Try to get from SVG
+           const parser = new DOMParser();
+           const doc = parser.parseFromString(prev.svgContent, 'image/svg+xml');
+           const el = doc.getElementById(layerId);
+           if (el) {
+             defaultValue = el.getAttribute(property) || (el.style as any)[property] || (property === 'fill' ? '#000000' : 'none');
+           }
+        }
+
+        newKeyframesToAdd.push({
+          id: Math.random().toString(36).substr(2, 9),
+          time: 0,
+          value: defaultValue,
+          easing: 'linear'
+        });
+      }
+
+      const mainKeyframe: Keyframe = { 
+        id: Math.random().toString(36).substr(2, 9), 
+        time: targetTime, 
+        value, 
+        easing, 
+        bezierParams: bezier 
+      };
+      newKeyframesToAdd.push(mainKeyframe);
+
+      // Immutably update animations
+      const existingAnimIndex = prev.animations.findIndex(a => a.layerId === layerId);
+      let newAnimations;
+
+      if (existingAnimIndex === -1) {
+        // Create new animation record
+        newAnimations = [
+          ...prev.animations,
+          {
+            layerId,
+            trigger: 'on_load' as TriggerType,
+            tracks: [{ property, keyframes: newKeyframesToAdd.sort((a, b) => a.time - b.time) }]
+          }
+        ];
+      } else {
+        // Update existing animation record
+        newAnimations = prev.animations.map((anim, i) => {
+          if (i !== existingAnimIndex) return anim;
+
+          const existingTrackIndex = anim.tracks.findIndex(t => t.property === property);
+          let newTracks;
+
+          if (existingTrackIndex === -1) {
+            // Create new track
+            newTracks = [...anim.tracks, { property, keyframes: newKeyframesToAdd.sort((a, b) => a.time - b.time) }];
+          } else {
+            // Update existing track
+            newTracks = anim.tracks.map((track, j) => {
+              if (j !== existingTrackIndex) return track;
+              
+              let updatedKeyframes = [...track.keyframes];
+              
+              newKeyframesToAdd.forEach(newKf => {
+                const existingKfIndex = updatedKeyframes.findIndex(kf => Math.abs(kf.time - newKf.time) < 0.01);
+                if (existingKfIndex > -1) {
+                   updatedKeyframes[existingKfIndex] = { ...newKf, id: updatedKeyframes[existingKfIndex].id };
+                } else {
+                   updatedKeyframes.push(newKf);
+                }
+              });
+
+              return { ...track, keyframes: updatedKeyframes.sort((a, b) => a.time - b.time) };
+            });
+          }
+
+          return { ...anim, tracks: newTracks };
+        });
+      }
+
       return { ...prev, animations: newAnimations };
     });
   }, [pushToHistory, state]);
+
+  // Helper to get current value
+  const getCurrentValue = useCallback((layerId: string, property: AnimatableProperty, time: number) => {
+    const anim = state.animations.find(a => a.layerId === layerId);
+    if (!anim) return 0;
+    const track = anim.tracks.find(t => t.property === property);
+    if (!track || track.keyframes.length === 0) return 0;
+
+    let value = track.keyframes[0].value;
+    const kfs = track.keyframes;
+
+    if (time <= kfs[0].time) {
+      value = kfs[0].value;
+    } else if (time >= kfs[kfs.length - 1].time) {
+      value = kfs[kfs.length - 1].value;
+    } else {
+      for (let i = 0; i < kfs.length - 1; i++) {
+        if (time <= kfs[i + 1].time) {
+          const prev = kfs[i];
+          const next = kfs[i + 1];
+          const dt = next.time - prev.time;
+          if (dt > 0.000001) {
+            const rawT = (time - prev.time) / dt;
+            const ease = next.easing === 'custom' && next.bezierParams 
+                  ? easings.custom(next.bezierParams[0], next.bezierParams[1], next.bezierParams[2], next.bezierParams[3])
+                  : (easings[next.easing as Exclude<EasingType, 'custom'>] || easings.linear);
+            const t = ease(rawT);
+            if (typeof prev.value === 'number' && typeof next.value === 'number') {
+              value = prev.value + (next.value - prev.value) * t;
+            } else {
+              value = prev.value;
+            }
+          }
+          break;
+        }
+      }
+    }
+    return typeof value === 'number' ? value : 0;
+  }, [state.animations]);
+
+  const handleAlign = useCallback((type: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'distribute-h' | 'distribute-v') => {
+    if (state.selectedLayerIds.length < 2) return;
+    pushToHistory(state);
+
+    const positions = state.selectedLayerIds.map(id => ({
+      id,
+      x: getCurrentValue(id, 'x', state.currentTime),
+      y: getCurrentValue(id, 'y', state.currentTime)
+    }));
+
+    if (type === 'distribute-h') {
+        positions.sort((a, b) => a.x - b.x);
+        const min = positions[0].x;
+        const max = positions[positions.length - 1].x;
+        const gap = (max - min) / (positions.length - 1);
+        positions.forEach((p, i) => {
+            if (i > 0 && i < positions.length - 1) {
+                addKeyframe(p.id, 'x', min + gap * i, state.currentTime, 'easeInOutQuad', true);
+            }
+        });
+    } else if (type === 'distribute-v') {
+        positions.sort((a, b) => a.y - b.y);
+        const min = positions[0].y;
+        const max = positions[positions.length - 1].y;
+        const gap = (max - min) / (positions.length - 1);
+        positions.forEach((p, i) => {
+            if (i > 0 && i < positions.length - 1) {
+                addKeyframe(p.id, 'y', min + gap * i, state.currentTime, 'easeInOutQuad', true);
+            }
+        });
+    } else {
+        const xs = positions.map(p => p.x);
+        const ys = positions.map(p => p.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const avgX = (minX + maxX) / 2;
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        const avgY = (minY + maxY) / 2;
+
+        state.selectedLayerIds.forEach(id => {
+            switch(type) {
+                case 'left': addKeyframe(id, 'x', minX, state.currentTime, 'easeInOutQuad', true); break;
+                case 'center': addKeyframe(id, 'x', avgX, state.currentTime, 'easeInOutQuad', true); break;
+                case 'right': addKeyframe(id, 'x', maxX, state.currentTime, 'easeInOutQuad', true); break;
+                case 'top': addKeyframe(id, 'y', minY, state.currentTime, 'easeInOutQuad', true); break;
+                case 'middle': addKeyframe(id, 'y', avgY, state.currentTime, 'easeInOutQuad', true); break;
+                case 'bottom': addKeyframe(id, 'y', maxY, state.currentTime, 'easeInOutQuad', true); break;
+            }
+        });
+    }
+  }, [state.selectedLayerIds, state.currentTime, getCurrentValue, addKeyframe, pushToHistory, state]);
 
   const copyKeyframes = useCallback(() => {
     if (state.selectedKeyframes.length === 0) return;
@@ -204,7 +386,7 @@ const App: React.FC = () => {
     });
   }, [pushToHistory, state]);
 
-  const handleReorderLayers = useCallback((sourceId: string, targetId: string) => {
+  const handleReorderLayers = useCallback((sourceId: string, targetId: string, position: 'before' | 'after' = 'before') => {
     pushToHistory(state);
     setState(prev => {
       const parser = new DOMParser();
@@ -213,8 +395,12 @@ const App: React.FC = () => {
       const targetEl = doc.getElementById(targetId);
 
       if (sourceEl && targetEl && sourceEl.parentNode === targetEl.parentNode) {
-        // Insert before target
-        targetEl.parentNode.insertBefore(sourceEl, targetEl);
+        if (position === 'before') {
+            targetEl.parentNode.insertBefore(sourceEl, targetEl);
+        } else {
+            // Insert after: insert before target's next sibling
+            targetEl.parentNode.insertBefore(sourceEl, targetEl.nextSibling);
+        }
       }
       return { ...prev, svgContent: new XMLSerializer().serializeToString(doc) };
     });
@@ -236,11 +422,17 @@ const App: React.FC = () => {
         anim.layerId === id ? { ...anim, layerId: newName } : anim
       );
 
+      // Update selected keyframes references
+      const newSelectedKeyframes = prev.selectedKeyframes.map(sk => 
+        sk.layerId === id ? { ...sk, layerId: newName } : sk
+      );
+
       return { 
         ...prev, 
         svgContent: new XMLSerializer().serializeToString(doc),
         animations: newAnimations,
-        selectedLayerIds: prev.selectedLayerIds.map(sid => sid === id ? newName : sid)
+        selectedLayerIds: prev.selectedLayerIds.map(sid => sid === id ? newName : sid),
+        selectedKeyframes: newSelectedKeyframes
       };
     });
   }, [pushToHistory, state]);
@@ -258,7 +450,30 @@ const App: React.FC = () => {
         ...prev, 
         svgContent: new XMLSerializer().serializeToString(doc),
         selectedLayerIds: prev.selectedLayerIds.filter(sid => sid !== id),
-        animations: prev.animations.filter(a => a.layerId !== id)
+        animations: prev.animations.filter(a => a.layerId !== id),
+        selectedKeyframes: prev.selectedKeyframes.filter(sk => sk.layerId !== id)
+      };
+    });
+  }, [pushToHistory, state]);
+
+  const handleDeleteLayers = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    pushToHistory(state);
+    setState(prev => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(prev.svgContent, 'image/svg+xml');
+      ids.forEach(id => {
+        const el = doc.getElementById(id);
+        if (el && el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+      return {
+        ...prev,
+        svgContent: new XMLSerializer().serializeToString(doc),
+        selectedLayerIds: prev.selectedLayerIds.filter(sid => !ids.includes(sid)),
+        animations: prev.animations.filter(a => !ids.includes(a.layerId)),
+        selectedKeyframes: prev.selectedKeyframes.filter(sk => !ids.includes(sk.layerId))
       };
     });
   }, [pushToHistory, state]);
@@ -381,8 +596,64 @@ const App: React.FC = () => {
     const zoomX = (cW - padding) / state.artboardWidth;
     const zoomY = (cH - padding) / state.artboardHeight;
     const newZoom = Math.max(0.1, Math.min(4, Math.min(zoomX, zoomY)));
-    setState(prev => ({ ...prev, stageZoom: newZoom }));
+    setState(prev => ({ ...prev, stageZoom: newZoom, viewX: 0, viewY: 0 }));
   }, [state.artboardWidth, state.artboardHeight]);
+
+  const handleUpload = useCallback((content: string) => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'image/svg+xml');
+    const svg = doc.querySelector('svg');
+    
+    if (svg) {
+      // Parse dimensions
+      let width = 400;
+      let height = 400;
+      const wAttr = svg.getAttribute('width');
+      const hAttr = svg.getAttribute('height');
+      const vbAttr = svg.getAttribute('viewBox');
+
+      if (wAttr && hAttr && !wAttr.includes('%') && !hAttr.includes('%')) {
+        width = parseFloat(wAttr) || 400;
+        height = parseFloat(hAttr) || 400;
+      } else if (vbAttr) {
+        const parts = vbAttr.split(/[\s,]+/).filter(Boolean).map(parseFloat);
+        if (parts.length === 4) {
+          width = parts[2];
+          height = parts[3];
+        }
+      }
+
+      // Ensure IDs on all elements
+      let idCounter = 0;
+      const ensureIds = (el: Element) => {
+        if (!el.getAttribute('id')) {
+          el.setAttribute('id', `layer-${Date.now()}-${idCounter++}`);
+        }
+        Array.from(el.children).forEach(child => {
+          if (!['defs', 'style', 'title', 'desc', 'metadata'].includes(child.tagName.toLowerCase())) {
+             ensureIds(child);
+          }
+        });
+      };
+      ensureIds(svg);
+      
+      const serializer = new XMLSerializer();
+      const processedContent = serializer.serializeToString(doc);
+
+      pushToHistory(state);
+      setState(prev => ({ 
+        ...prev, 
+        svgContent: processedContent, 
+        artboardWidth: width,
+        artboardHeight: height,
+        animations: [],
+        layers: [], // Will be repopulated by useEffect
+        selectedLayerIds: [],
+        viewX: 0,
+        viewY: 0
+      }));
+    }
+  }, [pushToHistory, state]);
 
   // --- Markers ---
 
@@ -435,9 +706,21 @@ const App: React.FC = () => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmd = isMac ? e.metaKey : e.ctrlKey;
 
-      if (e.code === 'Space' && e.target === document.body) {
+      if (e.code === 'Space' && e.target === document.body && !e.repeat) {
         e.preventDefault();
-        setState(prev => ({ ...prev, isPlaying: !prev.isPlaying }));
+        spaceDownRef.current = Date.now();
+        // Stage handles cursor via key state, we manage logic here
+      }
+      
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        // Prevent backspace from navigating back if not in input
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+        
+        if (state.selectedKeyframes.length > 0) {
+          deleteKeyframes(state.selectedKeyframes);
+        } else if (state.selectedLayerIds.length > 0) {
+          handleDeleteLayers(state.selectedLayerIds);
+        }
       }
       
       if (cmd && e.code === 'KeyC') {
@@ -454,27 +737,66 @@ const App: React.FC = () => {
         else undo();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [copyKeyframes, pasteKeyframes, undo, redo]);
 
-  // --- SVG Parsing ---
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && e.target === document.body) {
+        if (spaceDownRef.current) {
+           const duration = Date.now() - spaceDownRef.current;
+           // If brief press and didn't pan, toggle play
+           if (duration < 200 && !isPanningRef.current) {
+              setState(prev => ({ ...prev, isPlaying: !prev.isPlaying }));
+           }
+        }
+        spaceDownRef.current = null;
+        isPanningRef.current = false;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [copyKeyframes, pasteKeyframes, undo, redo, deleteKeyframes, handleDeleteLayers, state.selectedKeyframes, state.selectedLayerIds]);
+
+  // --- SVG Parsing & ID Sync ---
   
   useEffect(() => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(state.svgContent, 'image/svg+xml');
     const svgElement = doc.querySelector('svg');
     if (svgElement) {
+      let modified = false;
+      let idCounter = 0;
+
       const extractLayers = (element: Element): SVGLayer[] => {
         return Array.from(element.children)
-          .filter(child => !['defs', 'style', 'title', 'desc'].includes(child.tagName.toLowerCase()))
+          .filter(child => !['defs', 'style', 'title', 'desc', 'metadata'].includes(child.tagName.toLowerCase()))
           .map(child => {
-            const id = child.getAttribute('id') || `layer-${Math.random().toString(36).substr(2, 9)}`;
-            if (!child.getAttribute('id')) child.setAttribute('id', id);
-            return { id, tagName: child.tagName, className: child.getAttribute('class') || '', children: extractLayers(child) };
+            let id = child.getAttribute('id');
+            if (!id) {
+              id = `layer-${Date.now()}-${idCounter++}`;
+              child.setAttribute('id', id);
+              modified = true;
+            }
+            return { 
+              id, 
+              tagName: child.tagName, 
+              className: child.getAttribute('class') || '', 
+              children: extractLayers(child) 
+            };
           });
       };
-      setState(prev => ({ ...prev, layers: extractLayers(svgElement) }));
+
+      const newLayers = extractLayers(svgElement);
+      
+      if (modified) {
+        const newSvgContent = new XMLSerializer().serializeToString(doc);
+        setState(prev => ({ ...prev, layers: newLayers, svgContent: newSvgContent }));
+      } else {
+        setState(prev => ({ ...prev, layers: newLayers }));
+      }
     }
   }, [state.svgContent]);
 
@@ -482,7 +804,7 @@ const App: React.FC = () => {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-gray-50 text-gray-900 select-none">
       <Header 
         onExport={() => setIsExportModalOpen(true)} 
-        onUpload={(c) => { pushToHistory(state); setState(prev => ({ ...prev, svgContent: c, animations: [] })); }} 
+        onUpload={handleUpload} 
         stageZoom={state.stageZoom} 
         onStageZoom={(z) => setState(prev => ({ ...prev, stageZoom: z }))} 
         onZoomToFit={zoomToFit}
@@ -496,23 +818,25 @@ const App: React.FC = () => {
           layers={state.layers} 
           selectedIds={state.selectedLayerIds} 
           hiddenIds={state.hiddenLayerIds} 
-          onSelect={(id, multi) => setState(prev => ({ ...prev, selectedLayerIds: multi ? [...prev.selectedLayerIds, id] : [id] }))} 
+          onSelect={(id, multi) => setState(prev => ({ ...prev, selectedLayerIds: multi ? [...prev.selectedLayerIds, id] : [id], selectedKeyframes: [] }))} 
           onGroup={handleGroupLayers} 
           onReorder={handleReorderLayers} 
           onDelete={(id) => handleDeleteLayer(id)}
-          onDeleteSelected={() => deleteKeyframes(state.selectedKeyframes)} 
+          onDeleteSelected={() => handleDeleteLayers(state.selectedLayerIds)} 
           onToggleVisibility={(id) => setState(prev => ({ ...prev, hiddenLayerIds: prev.hiddenLayerIds.includes(id) ? prev.hiddenLayerIds.filter(l => l !== id) : [...prev.hiddenLayerIds, id] }))} 
           onRename={handleRenameLayer} 
         />
         <main className="flex-1 flex flex-col min-w-0 bg-gray-100 relative">
           <Stage 
             state={state} 
-            onSelectLayer={(id) => setState(prev => ({ ...prev, selectedLayerIds: id ? [id] : [] }))} 
+            onSelectLayer={(id) => setState(prev => ({ ...prev, selectedLayerIds: id ? [id] : [], selectedKeyframes: [] }))} 
             onUpdateTransform={(lid, prop, val) => addKeyframe(lid, prop, val, undefined, 'easeInOutQuad', true)} 
             onFinalizeTransform={() => pushToHistory(state)}
             onEnterPathEdit={(id) => setState(prev => ({ ...prev, editingPathId: id }))}
             onExitPathEdit={() => setState(prev => ({ ...prev, editingPathId: null }))}
             onUpdatePath={updateSvgPath}
+            onPanStart={() => { isPanningRef.current = true; }}
+            onUpdateView={(vx, vy) => setState(prev => ({ ...prev, viewX: vx, viewY: vy }))}
           />
           <Timeline 
             state={state} 
@@ -541,6 +865,7 @@ const App: React.FC = () => {
             onAddGradientStop={addGradientStop}
             onRemoveGradientStop={removeGradientStop}
             onReorderGradientStop={reorderGradientStop}
+            onAlign={handleAlign}
           />
         </div>
       </div>

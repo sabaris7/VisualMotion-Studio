@@ -71,53 +71,58 @@ const Timeline: React.FC<TimelineProps> = ({ state, setCurrentTime, setPlaying, 
       setSelectedKeyframes([]);
     }
 
+    let rAF: number | null = null;
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const currentX = moveEvent.clientX - rect.left + scrollLeft;
-      const currentY = moveEvent.clientY - rect.top;
-      
-      const dx = Math.abs(currentX - startX);
-      const dy = Math.abs(currentY - startY);
+      if (rAF) return;
+      rAF = requestAnimationFrame(() => {
+        const currentX = moveEvent.clientX - rect.left + scrollLeft;
+        const currentY = moveEvent.clientY - rect.top;
+        
+        const dx = Math.abs(currentX - startX);
+        const dy = Math.abs(currentY - startY);
 
-      // If moving significantly and we clicked background, start marquee selection
-      // Otherwise, continuous seek
-      if (dx > 5 || dy > 5) {
-        const x = Math.min(startX, currentX);
-        const y = Math.min(startY, currentY);
-        const w = Math.abs(currentX - startX);
-        const h = Math.abs(currentY - startY);
-        setSelectionBox({ x, y, w, h });
+        // If moving significantly and we clicked background, start marquee selection
+        // Otherwise, continuous seek
+        if (dx > 5 || dy > 5) {
+          const x = Math.min(startX, currentX);
+          const y = Math.min(startY, currentY);
+          const w = Math.abs(currentX - startX);
+          const h = Math.abs(currentY - startY);
+          setSelectionBox({ x, y, w, h });
 
-        // Hit test keyframes
-        const found: SelectedKeyframe[] = [];
-        animations.forEach((anim, animIdx) => {
-          anim.tracks.forEach((track, trackIdx) => {
-            const rowIdx = animations.slice(0, animIdx).reduce((acc, curr) => acc + curr.tracks.length + 1, 0) + trackIdx + 1;
-            const rowTop = rowIdx * 23 + 40; 
-            const rowBottom = rowTop + 23;
+          // Hit test keyframes
+          const found: SelectedKeyframe[] = [];
+          animations.forEach((anim, animIdx) => {
+            anim.tracks.forEach((track, trackIdx) => {
+              const rowIdx = animations.slice(0, animIdx).reduce((acc, curr) => acc + curr.tracks.length + 1, 0) + trackIdx + 1;
+              const rowTop = rowIdx * 23 + 40; 
+              const rowBottom = rowTop + 23;
 
-            if (y < rowBottom && y + h > rowTop) {
-              track.keyframes.forEach(kf => {
-                const kfX = kf.time * pixelsPerSecond;
-                if (kfX >= x && kfX <= x + w) {
-                  found.push({ layerId: anim.layerId, property: track.property, kfId: kf.id });
-                }
-              });
-            }
+              if (y < rowBottom && y + h > rowTop) {
+                track.keyframes.forEach(kf => {
+                  const kfX = kf.time * pixelsPerSecond;
+                  if (kfX >= x && kfX <= x + w) {
+                    found.push({ layerId: anim.layerId, property: track.property, kfId: kf.id });
+                  }
+                });
+              }
+            });
           });
-        });
 
-        if (e.shiftKey) {
-          const combined = [...selectedKeyframes];
-          found.forEach(f => {
-            if (!combined.some(c => c.kfId === f.kfId)) combined.push(f);
-          });
-          setSelectedKeyframes(combined);
+          if (e.shiftKey) {
+            const combined = [...selectedKeyframes];
+            found.forEach(f => {
+              if (!combined.some(c => c.kfId === f.kfId)) combined.push(f);
+            });
+            setSelectedKeyframes(combined);
+          } else {
+            setSelectedKeyframes(found);
+          }
         } else {
-          setSelectedKeyframes(found);
+          seekToX(moveEvent.clientX);
         }
-      } else {
-        seekToX(moveEvent.clientX);
-      }
+        rAF = null;
+      });
     };
 
     const onMouseUp = () => {
@@ -134,8 +139,13 @@ const Timeline: React.FC<TimelineProps> = ({ state, setCurrentTime, setPlaying, 
     e.stopPropagation();
     if (isPlaying) setPlaying(false);
     
+    let rAF: number | null = null;
     const onMouseMove = (moveEvent: MouseEvent) => {
-      seekToX(moveEvent.clientX);
+      if (rAF) return;
+      rAF = requestAnimationFrame(() => {
+        seekToX(moveEvent.clientX);
+        rAF = null;
+      });
     };
 
     const onMouseUp = () => {
@@ -167,15 +177,23 @@ const Timeline: React.FC<TimelineProps> = ({ state, setCurrentTime, setPlaying, 
 
     setDraggingKf({ layerId, property, kfId });
 
+    let rAF: number | null = null;
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const rect = trackAreaRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const scrollLeft = scrollRef.current?.scrollLeft || 0;
-      const x = moveEvent.clientX - rect.left + scrollLeft;
-      const newTime = Math.max(0, Math.min(duration, x / pixelsPerSecond));
-      if (onUpdateKeyframeTime) {
-        onUpdateKeyframeTime(layerId, property, kfId, newTime, true);
-      }
+      if (rAF) return;
+      rAF = requestAnimationFrame(() => {
+        const rect = trackAreaRef.current?.getBoundingClientRect();
+        if (!rect) {
+          rAF = null;
+          return;
+        }
+        const scrollLeft = scrollRef.current?.scrollLeft || 0;
+        const x = moveEvent.clientX - rect.left + scrollLeft;
+        const newTime = Math.max(0, Math.min(duration, x / pixelsPerSecond));
+        if (onUpdateKeyframeTime) {
+          onUpdateKeyframeTime(layerId, property, kfId, newTime, true);
+        }
+        rAF = null;
+      });
     };
 
     const onMouseUp = () => {

@@ -53,7 +53,7 @@ const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
       return prev.value + (next.value - prev.value) * t;
     }
     
-    if (typeof prev.value === 'string' && typeof next.value === 'string' && prev.value.startsWith('#') && next.value.startsWith('#')) {
+    if (typeof prev.value === 'string' && typeof next.value === 'string') {
       return interpolateColor(prev.value, next.value, t);
     }
 
@@ -65,12 +65,24 @@ const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
       const el = cloneDoc.getElementById(anim.layerId);
       if (!el) return;
 
+      // Resolve Gradient
+      let gradientEl: Element | null = null;
+      const fill = el.getAttribute('fill') || el.style.fill;
+      if (fill && fill.indexOf('url(#') !== -1) {
+         const match = fill.match(/url\(#([^)]+)\)/);
+         if (match) {
+            gradientEl = cloneDoc.getElementById(match[1]);
+         }
+      }
+
       let tx = 0, ty = 0, tz = 0, sc = 1, scX = 1, scY = 1, rx = 0, ry = 0, rz = 0;
+      let anchorX = 0.5, anchorY = 0.5;
       let opacity = 1;
-      let fill = null;
+      let fillVal = null;
       let stroke = null;
       let strokeDash = null;
       let hasTransform = false;
+      let offsetPath = '', offsetDistance = '', offsetRotate = '';
 
       anim.tracks.forEach(track => {
         const val = getInterpolatedValue(track, time);
@@ -84,25 +96,75 @@ const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
           case 'rotate': rz = val as number; hasTransform = true; break;
           case 'rotateX': rx = val as number; hasTransform = true; break;
           case 'rotateY': ry = val as number; hasTransform = true; break;
+          case 'anchorX': anchorX = val as number; break;
+          case 'anchorY': anchorY = val as number; break;
           case 'opacity': opacity = val as number; break;
-          case 'fill': fill = val as string; break;
+          case 'fill': fillVal = val as string; break;
           case 'stroke': stroke = val as string; break;
           case 'strokeDashoffset': strokeDash = val as number; break;
+          case 'offsetPath': offsetPath = `path('${val}')`; break;
+          case 'offsetDistance': offsetDistance = `${val}%`; break;
+          case 'offsetRotate': offsetRotate = String(val); break;
+          
+          case 'gradientX1': if(gradientEl) gradientEl.setAttribute('x1', String(val)); break;
+          case 'gradientY1': if(gradientEl) gradientEl.setAttribute('y1', String(val)); break;
+          case 'gradientX2': if(gradientEl) gradientEl.setAttribute('x2', String(val)); break;
+          case 'gradientY2': if(gradientEl) gradientEl.setAttribute('y2', String(val)); break;
+          case 'gradientCX': if(gradientEl) gradientEl.setAttribute('cx', String(val)); break;
+          case 'gradientCY': if(gradientEl) gradientEl.setAttribute('cy', String(val)); break;
+          case 'gradientR': if(gradientEl) gradientEl.setAttribute('r', String(val)); break;
+          
+          case 'stopOffset0': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[0]; if(s) s.setAttribute('offset', String(val)); } 
+             break;
+          case 'stopOffset1': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[1]; if(s) s.setAttribute('offset', String(val)); } 
+             break;
+          case 'stopOffset2': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[2]; if(s) s.setAttribute('offset', String(val)); } 
+             break;
+          case 'stopOffset3': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[3]; if(s) s.setAttribute('offset', String(val)); } 
+             break;
+          case 'stopOffset4': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[4]; if(s) s.setAttribute('offset', String(val)); } 
+             break;
+             
+          case 'stopColor0': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[0]; if(s) { s.setAttribute('stop-color', String(val)); s.style.stopColor = String(val); } } 
+             break;
+          case 'stopColor1': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[1]; if(s) { s.setAttribute('stop-color', String(val)); s.style.stopColor = String(val); } } 
+             break;
+          case 'stopColor2': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[2]; if(s) { s.setAttribute('stop-color', String(val)); s.style.stopColor = String(val); } } 
+             break;
+          case 'stopColor3': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[3]; if(s) { s.setAttribute('stop-color', String(val)); s.style.stopColor = String(val); } } 
+             break;
+          case 'stopColor4': 
+             if(gradientEl) { const s = gradientEl.querySelectorAll('stop')[4]; if(s) { s.setAttribute('stop-color', String(val)); s.style.stopColor = String(val); } } 
+             break;
         }
       });
 
       if (hasTransform) {
         const finalScaleX = sc * scX;
         const finalScaleY = sc * scY;
-        el.style.transform = `translate3d(${tx}px, ${ty}px, ${tz}px) scale(${finalScaleX}, ${finalScaleY}) rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg)`;
-        el.style.transformOrigin = 'center center';
+        const translate = Math.abs(tz) < 0.001 ? `translate(${tx}px, ${ty}px)` : `translate3d(${tx}px, ${ty}px, ${tz}px)`;
+        const rotate = (Math.abs(rx) < 0.001 && Math.abs(ry) < 0.001) ? `rotate(${rz}deg)` : `rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${rz}deg)`;
+        el.style.transform = `${translate} scale(${finalScaleX}, ${finalScaleY}) ${rotate}`;
         el.style.transformBox = 'fill-box';
       }
       
+      el.style.transformOrigin = `${anchorX * 100}% ${anchorY * 100}%`;
       el.style.opacity = opacity.toString();
-      if (fill) el.style.fill = fill;
+      if (fillVal) el.style.fill = fillVal;
       if (stroke) el.style.stroke = stroke;
       if (strokeDash !== null) el.style.strokeDashoffset = strokeDash.toString();
+      if (offsetPath) el.style.offsetPath = offsetPath;
+      if (offsetDistance) el.style.offsetDistance = offsetDistance;
+      if (offsetRotate) el.style.offsetRotate = offsetRotate;
     });
   };
 
@@ -328,9 +390,20 @@ const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
         time = config.duration;
       }
       
-      let transformParts = { x: 0, y: 0, z: 0, scale: 1, scaleX: 1, scaleY: 1, rotate: 0, rotateX: 0, rotateY: 0 };
+      let transformParts = { x: 0, y: 0, z: 0, scale: 1, scaleX: 1, scaleY: 1, rotate: 0, rotateX: 0, rotateY: 0, anchorX: 0.5, anchorY: 0.5 };
       let hasTransform = false;
       let opacity = 1;
+      let offsetPath = '', offsetDistance = '', offsetRotate = '';
+
+      // Helper to find gradient element if needed
+      let gradientEl = null;
+      if(element) {
+        const fill = element.getAttribute('fill') || element.style.fill;
+        if(fill && fill.indexOf('url(#') !== -1) {
+            const match = fill.match(/url\\(#([^)]+)\\)/);
+            if (match) gradientEl = document.getElementById(match[1]);
+        }
+      }
       
       anim.tracks.forEach(track => {
         const kfs = track.keyframes;
@@ -358,19 +431,36 @@ const ExportModal: React.FC<ExportModalProps> = ({ state, onClose }) => {
         else if (track.property === 'rotate') { transformParts.rotate = val; hasTransform = true; }
         else if (track.property === 'rotateX') { transformParts.rotateX = val; hasTransform = true; }
         else if (track.property === 'rotateY') { transformParts.rotateY = val; hasTransform = true; }
+        else if (track.property === 'anchorX') { transformParts.anchorX = val; }
+        else if (track.property === 'anchorY') { transformParts.anchorY = val; }
         else if (track.property === 'opacity') opacity = val;
         else if (track.property === 'fill') element.style.fill = val;
         else if (track.property === 'stroke') element.style.stroke = val;
         else if (track.property === 'strokeDashoffset') element.style.strokeDashoffset = val;
+        else if (track.property === 'offsetPath') offsetPath = "path('" + val + "')";
+        else if (track.property === 'offsetDistance') offsetDistance = val + "%";
+        else if (track.property === 'offsetRotate') offsetRotate = val;
+        
+        // Gradient Colors
+        else if (track.property.startsWith('stopColor') && gradientEl) {
+             const idx = parseInt(track.property.replace('stopColor', ''));
+             const stops = gradientEl.querySelectorAll('stop');
+             if(stops[idx]) stops[idx].setAttribute('stop-color', val);
+        }
       });
       
       if (hasTransform) {
-        element.style.transform = \`translate3d(\${transformParts.x}px, \${transformParts.y}px, \${transformParts.z}px) scale(\${transformParts.scale * transformParts.scaleX}, \${transformParts.scale * transformParts.scaleY}) rotateX(\${transformParts.rotateX}deg) rotateY(\${transformParts.rotateY}deg) rotateZ(\${transformParts.rotate}deg)\`;
+        const translate = Math.abs(transformParts.z) < 0.001 ? \`translate(\${transformParts.x}px, \${transformParts.y}px)\` : \`translate3d(\${transformParts.x}px, \${transformParts.y}px, \${transformParts.z}px)\`;
+        const rotate = (Math.abs(transformParts.rotateX) < 0.001 && Math.abs(transformParts.rotateY) < 0.001) ? \`rotate(\${transformParts.rotate}deg)\` : \`rotateX(\${transformParts.rotateX}deg) rotateY(\${transformParts.rotateY}deg) rotateZ(\${transformParts.rotate}deg)\`;
+        element.style.transform = \`\${translate} scale(\${transformParts.scale * transformParts.scaleX}, \${transformParts.scale * transformParts.scaleY}) \${rotate}\`;
         element.style.transformBox = 'fill-box';
       }
       
       element.style.opacity = opacity;
-      element.style.transformOrigin = 'center center';
+      element.style.transformOrigin = \`\${transformParts.anchorX * 100}% \${transformParts.anchorY * 100}%\`;
+      if (offsetPath) element.style.offsetPath = offsetPath;
+      if (offsetDistance) element.style.offsetDistance = offsetDistance;
+      if (offsetRotate) element.style.offsetRotate = offsetRotate;
       
       if (config.isLooping || elapsed < config.duration || (config.isYoyo && (elapsed < config.duration * 2 || config.isLooping))) {
         requestAnimationFrame(frame);
